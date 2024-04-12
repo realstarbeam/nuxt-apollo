@@ -10,6 +10,47 @@ import { serializeConfig } from './serialize'
 
 export type { ClientConfig, ErrorResponse }
 
+interface ImportList {
+  [client: string]: {
+    linkPath?: string;
+    cachePath?: string;
+  };
+}
+
+function processImports (importList: ImportList): { importStatements: string[], fileImports: string | null } {
+  if (Object.keys(importList).length === 0) {
+    return { importStatements: [], fileImports: null }
+  }
+
+  const importStatements: string[] = []
+  const fileImports: string[] = []
+
+  Object.entries(importList).forEach(([client, paths]) => {
+    const clientImports: string[] = []
+
+    if (paths.linkPath) {
+      const linkAlias = `file_${client}_linkPath`
+      importStatements.push(`import ${linkAlias} from "${paths.linkPath}"`)
+      clientImports.push(`      createLinkByLinkPath: ${linkAlias}`)
+    }
+
+    if (paths.cachePath) {
+      const cacheAlias = `file_${client}_cachePath`
+      importStatements.push(`import ${cacheAlias} from "${paths.cachePath}"`)
+      clientImports.push(`      createCacheByCachePath: ${cacheAlias}`)
+    }
+
+    if (clientImports.length > 0) {
+      fileImports.push(`    ${client}: {\n${clientImports.join(',\n')}\n    }`)
+    }
+  })
+
+  return {
+    importStatements,
+    fileImports: fileImports.length > 0 ? ` fileImports: {\n${fileImports.join(',\n')}\n  }` : null
+  }
+}
+
 const logger = useLogger(name)
 
 async function readConfigFile (path: string): Promise<ClientConfig> {
@@ -61,6 +102,15 @@ export default defineNuxtModule<ModuleOptions>({
     const clients: Record<string, ClientConfig> = {}
     const configPaths: Record<string, string> = {}
 
+    interface FileImportList {
+      [key: string]: {
+        linkPath?: string;
+        cachePath?: string;
+      };
+    }
+
+    const fileImportList: FileImportList = {}
+
     async function prepareClients () {
       // eslint-disable-next-line prefer-const
       for (let [k, v] of Object.entries(options.clients || {})) {
@@ -85,8 +135,19 @@ export default defineNuxtModule<ModuleOptions>({
 
         v.defaultOptions = v?.defaultOptions || options.defaultOptions
 
-        if (!v?.httpEndpoint && !v?.wsEndpoint) {
-          logger.error(`Either \`httpEndpoint\` or \`wsEndpoint\` must be provided for client: \`${k}\``)
+        if (v.linkPath || v.cachePath) {
+          fileImportList[k] = {}
+
+          if (v.linkPath) {
+            fileImportList[k].linkPath = v.linkPath
+          }
+          if (v.cachePath) {
+            fileImportList[k].cachePath = v.cachePath
+          }
+        }
+
+        if (!v?.httpEndpoint && !v?.wsEndpoint && !v?.linkPath) {
+          logger.error(`Either \`httpEndpoint\` or \`wsEndpoint\` or \`linkPath\` must be provided for client: \`${k}\``)
         }
 
         clients[k] = v
@@ -97,12 +158,18 @@ export default defineNuxtModule<ModuleOptions>({
       filename: 'apollo.d.ts',
       getContents: () => [
         'import type { ClientConfig } from "@nuxtjs/apollo"',
+        'import type { ApolloLink, InMemoryCache } from "@apollo/client/core"',
+        'interface FileImportEntry {',
+        '  createLinkByLinkPath?: () => ApolloLink;',
+        '  createCacheByCachePath?: () => InMemoryCache;',
+        '}',
         'declare module \'#apollo\' {',
         `  export type ApolloClientKeys = '${Object.keys(clients).join('\' | \'')}'`,
         '  export const NuxtApollo: {',
         '    clients: Record<ApolloClientKeys, ClientConfig>',
         '    clientAwareness: boolean',
         '    proxyCookies: boolean',
+        '    fileImports: Record<string, FileImportEntry>',
         '    cookieAttributes: ClientConfig[\'cookieAttributes\']',
         '  }',
         '}'
@@ -111,14 +178,19 @@ export default defineNuxtModule<ModuleOptions>({
 
     addTemplate({
       filename: 'apollo.mjs',
-      getContents: () => [
-        'export const NuxtApollo = {',
-        ` proxyCookies: ${options.proxyCookies},`,
-        ` clientAwareness: ${options.clientAwareness},`,
-        ` cookieAttributes: ${serializeConfig(options.cookieAttributes)},`,
-        ` clients: ${serializeConfig(clients)}`,
-        '}'
-      ].join('\n')
+      getContents: () => {
+        const { importStatements, fileImports } = processImports(fileImportList)
+        return [
+          ...importStatements,
+          'export const NuxtApollo = {',
+          ` proxyCookies: ${options.proxyCookies},`,
+          ` clientAwareness: ${options.clientAwareness},`,
+          ` cookieAttributes: ${serializeConfig(options.cookieAttributes)},`,
+          ` clients: ${serializeConfig(clients)},`,
+          ...(fileImports ? [fileImports] : []),
+          '}'
+        ].join('\n')
+      }
     })
 
     nuxt.options.alias['#apollo'] = resolve(nuxt.options.buildDir, 'apollo')

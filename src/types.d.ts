@@ -10,7 +10,7 @@ export type ClientConfig = {
    * The GraphQL endpoint.
    * @type {string}
    */
-  httpEndpoint: string;
+  httpEndpoint?: string;
 
   /**
    * Provide a GraphQL endpoint to be used client-side. Overrides `httpEndpoint`.
@@ -100,6 +100,17 @@ export type ClientConfig = {
    * Configuration for the auth cookie.
    **/
   cookieAttributes?: CookieAttributes;
+
+  /**
+   * The path to file with ApolloLink creation function.
+   * @type {string}
+   */
+  linkPath?: string;
+  /**
+   * The path to file with ApolloCache creation function.
+   * @type {string}
+   */
+  cachePath?: string;
 };
 
 export interface NuxtApolloConfig<T = false> {
