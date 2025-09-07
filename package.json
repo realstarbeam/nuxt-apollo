@@ -1,8 +1,8 @@
 {
-  "name": "@nuxtjs/apollo",
-  "version": "5.0.0-alpha.15",
+  "name": "@realstarbeam/nuxt-apollo",
+  "version": "5.0.0-alpha.16",
   "license": "MIT",
-  "repository": "https://github.com/nuxt-modules/apollo-module",
+  "repository": "https://github.com/realstarbeam/nuxt-apollo",
   "homepage": "https://apollo.nuxtjs.org",
   "type": "module",
   "exports": {
@@ -36,7 +36,7 @@
     "lint": "eslint --ext .js,.ts,.vue .",
     "lint:fix": "eslint --fix --ext .js,.ts,.vue .",
     "docs:generate": "nuxt generate docs",
-    "release": "standard-version --prerelease alpha && git push --follow-tags && pnpm publish --tag next"
+    "release": "pnpm dlx standard-version --prerelease alpha && git push --follow-tags && pnpm publish --tag next"
   },
   "dependencies": {
     "@apollo/client": "^3.13.8",
